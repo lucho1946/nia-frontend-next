@@ -3,11 +3,13 @@ import { useState, useRef, useEffect } from "react";
 // ============================================================
 // CONFIGURACIÓN API NIA
 // ============================================================
-// Para pruebas públicas, el frontend debe apuntar al backend
-// productivo de Azure, no a localhost.
+// URL pública del backend experimental NIA v365 Next.
+// REACT_APP_API_BASE_URL puede sobrescribirla según el entorno.
+const DEFAULT_API_URL =
+  "https://nia-v365-next-api-ekd4fza7e0fzevfd.canadacentral-01.azurewebsites.net";
+
 const API_URL = (
-  process.env.REACT_APP_API_BASE_URL ||
-  "https://nia-v365-fmchdchabudbb4h4.canadacentral-01.azurewebsites.net"
+  process.env.REACT_APP_API_BASE_URL || DEFAULT_API_URL
 ).replace(/\/$/, "");
 
 // ============================================================
@@ -305,26 +307,38 @@ const Message = ({ msg, onSelectOption, loading }) => {
                 maxWidth: "74%",
               }}
             >
-              {msg.opciones.map((opcion) => (
-                <button
-                  key={opcion.id || opcion.label}
-                  type="button"
-                  onClick={() => onSelectOption?.(opcion.valor || opcion.label)}
-                  disabled={loading}
-                  style={{
-                    background: "#111",
-                    color: "#ddd",
-                    border: "0.5px solid #2a2a2a",
-                    borderRadius: 10,
-                    padding: "8px 12px",
-                    fontSize: 12,
-                    cursor: loading ? "not-allowed" : "pointer",
-                    opacity: loading ? 0.6 : 1,
-                  }}
-                >
-                  {opcion.label}
-                </button>
-              ))}
+              {msg.opciones.map((opcion) => {
+                // El valor es el dato técnico que recibe el backend.
+                // El label es el texto natural que ve el usuario.
+                const optionValue = String(
+                  opcion.valor ?? opcion.label ?? ""
+                );
+
+                const optionLabel = String(
+                  opcion.label ?? opcion.valor ?? ""
+                );
+
+                return (
+                  <button
+                    key={opcion.id || `${optionLabel}-${optionValue}`}
+                    type="button"
+                    onClick={() => onSelectOption?.(optionValue, optionLabel)}
+                    disabled={loading}
+                    style={{
+                      background: "#111",
+                      color: "#ddd",
+                      border: "0.5px solid #2a2a2a",
+                      borderRadius: 10,
+                      padding: "8px 12px",
+                      fontSize: 12,
+                      cursor: loading ? "not-allowed" : "pointer",
+                      opacity: loading ? 0.6 : 1,
+                    }}
+                  >
+                    {optionLabel}
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -378,25 +392,24 @@ const Message = ({ msg, onSelectOption, loading }) => {
             <div style={{ fontSize: 13, fontWeight: 500, color: "#ddd" }}>
               Conectar con asesor
             </div>
-            <div style={{ fontSize: 11, color: "#444", marginTop: 2 }}>
-              Un asesor te responde en menos de 30 minutos
+            <div style={{ fontSize: 11, color: "#555", marginTop: 2 }}>
+              Un asesor podrá continuar la atención.
             </div>
           </div>
 
-          <button
+          <div
             style={{
-              background: "#F5C400",
-              color: "#1a0f00",
-              border: "none",
+              background: "#161616",
+              color: "#777",
+              border: "0.5px solid #252525",
               borderRadius: 10,
-              padding: "9px 16px",
-              fontSize: 12,
-              fontWeight: 500,
-              cursor: "pointer",
+              padding: "9px 12px",
+              fontSize: 11,
+              whiteSpace: "nowrap",
             }}
           >
-            Contactar
-          </button>
+            Atención asistida
+          </div>
         </div>
       )}
     </div>
@@ -539,14 +552,24 @@ export default function App() {
     clearAttachment();
   };
 
-  const sendMessage = async (text) => {
-    const trimmedText = text.trim();
+const sendMessage = async (backendText, visibleText = backendText) => {
+  // Texto técnico/comercial enviado a NIA.
+  const normalizedBackendText = String(backendText ?? "").trim();
 
-    if (loading || uploadingFile) return;
+  // Texto natural mostrado en la burbuja del usuario.
+  const normalizedVisibleText = String(
+    visibleText ?? backendText ?? ""
+  ).trim();
 
-    const messageToSend = trimmedText || (fileMeta ? "Adjunto archivo" : "");
+  if (loading || uploadingFile) return;
 
-    if (!messageToSend) return;
+  const messageToSend =
+    normalizedBackendText || (fileMeta ? "Adjunto archivo" : "");
+
+  const messageToDisplay =
+    normalizedVisibleText || messageToSend;
+
+  if (!messageToSend) return;
 
     const currentSessionId =
       sessionIdRef.current ||
@@ -561,7 +584,11 @@ export default function App() {
       ...prev,
       {
         role: "user",
-        content: messageToSend,
+
+        // La interfaz muestra el label natural.
+        // El payload seguirá enviando messageToSend al backend.
+        content: messageToDisplay,
+
         time: now(),
         attachment: fileMeta || null,
       },
